@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1020">
+<title>아주 인사이트 허브</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="dot"></span>아주 인사이트 허브</div>
+  <nav class="tabs" id="tabs">
+    <button data-view="graph" class="active">관심 그래프</button>
+    <button data-view="insight">인사이트</button>
+    <button data-view="recs">추천 활동</button>
+    <button data-view="all">모든 활동</button>
+    <button data-view="connect">데이터 연동</button>
+    <button data-view="admin">관리</button>
+  </nav>
+</header>
+
+<main>
+  <!-- 관심 그래프 -->
+  <section id="view-graph" class="view active">
+    <div class="graph-wrap">
+      <div id="graph"></div>
+      <div class="graph-hud">
+        <div class="hud-title">나의 관심사 그래프</div>
+        <div class="hud-sub" id="graph-stats">불러오는 중…</div>
+        <div class="legend">
+          <span><i class="lg cat"></i>분야</span><span><i class="lg topic"></i>주제</span><span><i class="lg act"></i>추천 활동</span>
+        </div>
+        <label class="toggle"><input type="checkbox" id="show-acts" checked> 추천 활동 함께 보기</label>
+      </div>
+      <div class="graph-tools">
+        <button id="g-fit" title="전체 보기">⤢</button>
+        <button id="g-reheat" title="다시 배치">↻</button>
+      </div>
+      <aside class="node-panel" id="node-panel" hidden>
+        <button class="close" id="np-close">×</button>
+        <div id="np-body"></div>
+      </aside>
+      <div class="graph-empty" id="graph-empty" hidden>
+        <h3>아직 관심사 데이터가 없어요</h3>
+        <p>학습 폴더, 방문 기록, 관심 키워드를 연결하면 그래프가 자라납니다.</p>
+        <button class="primary" data-goto="connect">데이터 연동하기</button>
+        <button class="ghost" id="use-demo">데모 프로필로 체험</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 인사이트 -->
+  <section id="view-insight" class="view">
+    <div class="toolbar">
+      <select id="insight-date"></select>
+      <button id="insight-gen" class="primary">오늘 인사이트 생성</button>
+      <button id="insight-print" class="ghost">인쇄 / PDF</button>
+      <span class="muted small" id="insight-meta"></span>
+    </div>
+    <article class="paper" id="insight-body"><p class="muted">불러오는 중…</p></article>
+  </section>
+
+  <!-- 추천 활동 -->
+  <section id="view-recs" class="view">
+    <div class="toolbar"><h2>나에게 맞는 아주대 활동</h2><span class="muted small">관심 그래프와 연결된 공지만, 마감 지난 것 제외</span></div>
+    <div class="cards" id="recs"></div>
+  </section>
+
+  <!-- 모든 활동 -->
+  <section id="view-all" class="view">
+    <div class="toolbar wrap">
+      <input id="q" type="search" placeholder="제목·본문·키워드 검색">
+      <select id="sort">
+        <option value="latest">최신순</option>
+        <option value="deadline">마감 임박순</option>
+        <option value="tag">태그순</option>
+      </select>
+      <select id="group"><option value="">전체 기관</option></select>
+      <label class="toggle"><input type="checkbox" id="active-only"> 진행 중만</label>
+    </div>
+    <div class="chips" id="tag-chips"></div>
+    <div class="muted small" id="all-count"></div>
+    <div class="list" id="all-list"></div>
+    <button class="ghost wide" id="more" hidden>더 보기</button>
+  </section>
+
+  <!-- 데이터 연동 -->
+  <section id="view-connect" class="view">
+    <div class="grid2">
+      <div class="panel">
+        <h3>📁 학습 폴더</h3>
+        <p class="muted small">폴더를 고르면 <b>파일 경로(이름)만</b> 전송됩니다. 파일 내용은 업로드되지 않아요.</p>
+        <label class="file-btn">폴더 선택<input type="file" id="folder-input" webkitdirectory directory multiple hidden></label>
+        <div class="small" id="folder-status"></div>
+      </div>
+      <div class="panel">
+        <h3>🌐 웹 방문 기록</h3>
+        <p class="muted small">Google 테이크아웃의 <code>BrowserHistory.json</code>, 또는 제목/URL 목록(.txt, .csv)을 올리세요.</p>
+        <label class="file-btn">파일 업로드<input type="file" id="history-file" accept=".json,.txt,.csv" hidden></label>
+        <textarea id="history-text" rows="4" placeholder="또는 한 줄에 하나씩 제목이나 URL을 붙여넣기"></textarea>
+        <button id="history-send">추가</button>
+        <div class="small" id="history-status"></div>
+      </div>
+      <div class="panel">
+        <h3>✍️ 관심 키워드</h3>
+        <p class="muted small">쉼표로 구분. 직접 입력한 키워드는 가중치가 가장 큽니다.</p>
+        <input id="kw-input" placeholder="예: 인공지능, 창업, 교환학생">
+        <button id="kw-send">추가</button>
+      </div>
+      <div class="panel">
+        <h3>📊 연동 현황</h3>
+        <div id="sig-summary" class="small"></div>
+        <p class="muted small">공지를 열거나 ☆로 저장하는 행동도 자동으로 관심사에 반영됩니다.</p>
+        <button class="danger" id="reset">내 데이터 모두 삭제</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- 관리 -->
+  <section id="view-admin" class="view">
+    <div class="toolbar"><button class="primary" id="crawl-now">지금 크롤링</button><span class="small muted" id="crawl-state"></span></div>
+    <div class="panel"><h3>LLM 비용 현황</h3><div id="usage" class="small"></div></div>
+    <div class="panel"><h3>수집 대상 게시판</h3><div id="sources" class="small"></div></div>
+  </section>
+</main>
+
+<nav class="bottom-tabs" id="bottom-tabs">
+  <button data-view="graph" class="active"><span>◎</span>그래프</button>
+  <button data-view="insight"><span>✦</span>인사이트</button>
+  <button data-view="recs"><span>★</span>추천</button>
+  <button data-view="all"><span>☰</span>전체</button>
+  <button data-view="connect"><span>⇄</span>연동</button>
+</nav>
+
+<div class="toast" id="toast" hidden></div>
+<script src="/static/force-graph.min.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>

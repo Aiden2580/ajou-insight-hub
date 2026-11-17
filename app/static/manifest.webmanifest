@@ -1,0 +1,9 @@
+{
+  "name": "아주 인사이트 허브",
+  "short_name": "아주허브",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0b1020",
+  "theme_color": "#0b1020",
+  "icons": []
+}
