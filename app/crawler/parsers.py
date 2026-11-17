@@ -77,6 +77,11 @@ class K2WebParser(BoardParser):
         soup = _soup(html)
         return _text_of(soup.select_one(".b-content-box") or soup.select_one(".fr-view"))
 
+    def detail_date(self, html: str) -> str | None:
+        soup = _soup(html)
+        el = soup.select_one(".b-date-box") or soup.select_one(".b-main-box .b-date")
+        return normalize_date(el.get_text(" ")) if el else None
+
 
 def _short_date(text: str) -> str | None:
     """그누보드 목록의 'MM-DD' 형식 날짜. 연도는 오늘 기준으로 추정(미래면 작년)."""

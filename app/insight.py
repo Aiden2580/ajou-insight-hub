@@ -99,8 +99,12 @@ def _template_report(ctx: dict) -> str:
 
 
 def generate(user_id: str, force: bool = False) -> dict:
-    ctx = build_context(user_id)
     d = today_kst()
+    today = get(user_id, d)
+    # 하루 1번: 오늘 것이 이미 있으면 그대로 (LLM이 꺼져 있을 때 만든 템플릿만 예외)
+    if today and not force and (today["generated_by"] != "template" or not config.llm_enabled()):
+        return today
+    ctx = build_context(user_id)
     with get_conn() as c:
         prev = c.execute(
             "SELECT * FROM insights WHERE user_id=? ORDER BY date DESC LIMIT 1", (user_id,)

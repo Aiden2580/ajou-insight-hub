@@ -11,7 +11,7 @@ from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Query, Upl
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, insight, interest, scheduler
+from . import config, insight, interest, scheduler, tagger
 from .crawler.base import available_parsers
 from .crawler.runner import load_sources
 from .db import get_conn, init_db, row_to_notice
@@ -38,6 +38,7 @@ def uid(x_user_id: str | None) -> str:
 @app.on_event("startup")
 def _startup():
     init_db()
+    logging.getLogger("startup").info("backfill: %s", tagger.backfill())
     if config.ENABLE_SCHEDULER:
         scheduler.start()
 
@@ -57,9 +58,11 @@ def manifest():
 def list_notices(
     q: str = "", tag: str = "", source: str = "", sort: str = "latest",
     page: int = Query(1, ge=1), size: int = Query(30, ge=1, le=100), active_only: bool = False,
-    x_user_id: str | None = Header(None),
+    include_admin: bool = False, x_user_id: str | None = Header(None),
 ):
     where, args = [], []
+    if not include_admin:  # 단순 행정 안내는 체크박스를 켰을 때만
+        where.append("(kind IS NULL OR kind <> 'admin')")
     if q:
         where.append("(title LIKE ? OR content LIKE ? OR keywords LIKE ?)")
         args += [f"%{q}%"] * 3
@@ -91,12 +94,14 @@ def list_notices(
 
 
 @app.get("/api/tags")
-def tags():
+def tags(include_admin: bool = False):
     cnt = Counter()
+    w = "" if include_admin else "WHERE kind IS NULL OR kind <> 'admin'"
     with get_conn() as c:
-        for (t,) in c.execute("SELECT tags FROM notices"):
+        for (t,) in c.execute(f"SELECT tags FROM notices {w}"):
             cnt.update(json.loads(t or "[]"))
-    return [{"tag": k, "count": cnt.get(k, 0)} for k in TAXONOMY if cnt.get(k, 0)] 
+        admin_n = c.execute("SELECT COUNT(*) FROM notices WHERE kind='admin'").fetchone()[0]
+    return {"tags": [{"tag": k, "count": cnt.get(k, 0)} for k in TAXONOMY if cnt.get(k, 0)], "admin_count": admin_n}
 
 
 @app.get("/api/notices/{nid}")
@@ -110,10 +115,17 @@ def notice_detail(nid: int):
     return d
 
 
+def _is_admin(nid: int) -> bool:
+    with get_conn() as c:
+        r = c.execute("SELECT kind FROM notices WHERE id=?", (nid,)).fetchone()
+    return bool(r and r[0] == "admin")
+
+
 @app.post("/api/notices/{nid}/click")
 def notice_click(nid: int, x_user_id: str | None = Header(None)):
     u = uid(x_user_id)
-    interest.add_signals(u, "click", [str(nid)])
+    if not _is_admin(nid):  # 행정 안내 열람은 관심사로 치지 않는다
+        interest.add_signals(u, "click", [str(nid)])
     return {"ok": True}
 
 
@@ -128,7 +140,8 @@ def notice_bookmark(nid: int, x_user_id: str | None = Header(None)):
         return {"bookmarked": False}
     with get_conn() as c:
         c.execute("INSERT INTO bookmarks(user_id,notice_id) VALUES(?,?)", (u, nid))
-    interest.add_signals(u, "bookmark", [str(nid)])
+    if not _is_admin(nid):
+        interest.add_signals(u, "bookmark", [str(nid)])
     return {"bookmarked": True}
 
 
@@ -207,6 +220,7 @@ def get_insight(date: str | None = None, x_user_id: str | None = Header(None)):
 
 @app.post("/api/insight/generate")
 def gen_insight(force: bool = False, x_user_id: str | None = Header(None)):
+    """오늘 인사이트가 이미 있으면 그대로 돌려준다(토큰 0). force=true일 때만 새로 생성."""
     return insight.generate(uid(x_user_id), force=force)
 
 
@@ -225,8 +239,8 @@ def sources():
 
 @app.post("/api/crawl")
 def crawl_now():
-    threading.Thread(target=scheduler.run_pipeline, daemon=True).start()
-    return {"started": True}
+    """공지 새로고침 (사용자가 누를 때만 수집)."""
+    return {"started": scheduler.start_background_refresh(), **scheduler.status()}
 
 
 @app.get("/api/status")

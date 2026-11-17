@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS notices (
     keywords TEXT DEFAULT '[]',
     summary TEXT DEFAULT '',
     deadline TEXT,
+    kind TEXT,                   -- activity(활동/기회) | admin(단순 행정 안내). NULL = 미분류
     pinned INTEGER DEFAULT 0,
     tagged_by TEXT,
     fetched_at TEXT DEFAULT (datetime('now'))
@@ -81,6 +82,19 @@ CREATE TABLE IF NOT EXISTS bookmarks (
     PRIMARY KEY (user_id, notice_id)
 );
 
+-- 태깅 결과 영구 캐시: 같은 제목(재공지·여러 게시판 중복)은 다시 LLM에 보내지 않는다
+CREATE TABLE IF NOT EXISTS tag_cache (
+    key TEXT PRIMARY KEY,        -- sha1(정규화된 제목)
+    tags TEXT, keywords TEXT, summary TEXT, kind TEXT,
+    tagged_by TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS meta (
+    k TEXT PRIMARY KEY,
+    v TEXT
+);
+
 CREATE TABLE IF NOT EXISTS llm_usage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     purpose TEXT,                -- tagging | insight
@@ -121,9 +135,35 @@ def get_conn():
             conn.close()
 
 
+# 기존 DB에 나중에 추가된 컬럼 (CREATE TABLE IF NOT EXISTS로는 안 붙는다)
+_MIGRATIONS = {
+    "notices": {"kind": "TEXT", "ext_key": "TEXT"},
+    "insights": {"ctx_hash": "TEXT", "ctx_tokens_est": "INTEGER"},
+}
+
+
 def init_db() -> None:
     with get_conn() as c:
+        for table, cols in _MIGRATIONS.items():
+            exists = c.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)).fetchone()
+            if not exists:
+                continue
+            have = {r[1] for r in c.execute(f"PRAGMA table_info({table})")}
+            for col, typ in cols.items():
+                if col not in have:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
         c.executescript(SCHEMA)
+
+
+def meta_get(k: str) -> str | None:
+    with get_conn() as c:
+        r = c.execute("SELECT v FROM meta WHERE k=?", (k,)).fetchone()
+    return r[0] if r else None
+
+
+def meta_set(k: str, v: str) -> None:
+    with get_conn() as c:
+        c.execute("INSERT OR REPLACE INTO meta(k,v) VALUES(?,?)", (k, v))
 
 
 def row_to_notice(r: sqlite3.Row) -> dict:
