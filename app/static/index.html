@@ -30,7 +30,7 @@
         <div class="hud-title">나의 관심사 그래프</div>
         <div class="hud-sub" id="graph-stats">불러오는 중…</div>
         <div class="legend">
-          <span><i class="lg cat"></i>분야</span><span><i class="lg topic"></i>주제</span><span><i class="lg act"></i>추천 활동</span>
+          <span><i class="lg grp"></i>영역</span><span><i class="lg cat"></i>분야</span><span><i class="lg course"></i>과목</span><span><i class="lg topic"></i>주제</span><span><i class="lg act"></i>추천 활동</span>
         </div>
         <label class="toggle"><input type="checkbox" id="show-acts" checked> 추천 활동 함께 보기</label>
       </div>
@@ -55,7 +55,7 @@
   <section id="view-insight" class="view">
     <div class="toolbar">
       <select id="insight-date"></select>
-      <button id="insight-gen" class="primary">오늘 인사이트 생성</button>
+      <button id="insight-gen" class="ghost" title="오늘 인사이트는 하루 한 번 자동으로 만들어집니다. 다시 만들면 LLM 토큰을 씁니다.">다시 생성</button>
       <button id="insight-print" class="ghost">인쇄 / PDF</button>
       <span class="muted small" id="insight-meta"></span>
     </div>
@@ -79,6 +79,8 @@
       </select>
       <select id="group"><option value="">전체 기관</option></select>
       <label class="toggle"><input type="checkbox" id="active-only"> 진행 중만</label>
+      <label class="toggle" title="수강신청·자퇴·전자출결 같은 단순 행정 안내"><input type="checkbox" id="include-admin"> 단순 안내도 보기 <span class="muted" id="admin-count"></span></label>
+      <button class="ghost refresh-btn">공지 새로고침</button><span class="small muted last-crawl"></span>
     </div>
     <div class="chips" id="tag-chips"></div>
     <div class="muted small" id="all-count"></div>
@@ -120,7 +122,7 @@
 
   <!-- 관리 -->
   <section id="view-admin" class="view">
-    <div class="toolbar"><button class="primary" id="crawl-now">지금 크롤링</button><span class="small muted" id="crawl-state"></span></div>
+    <div class="toolbar"><button class="primary refresh-btn" id="crawl-now">공지 새로고침</button><span class="small muted" id="crawl-state"></span></div>
     <div class="panel"><h3>LLM 비용 현황</h3><div id="usage" class="small"></div></div>
     <div class="panel"><h3>수집 대상 게시판</h3><div id="sources" class="small"></div></div>
   </section>

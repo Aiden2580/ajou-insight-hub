@@ -31,10 +31,13 @@ INSIGHT_MODEL = os.getenv("INSIGHT_MODEL", "claude-opus-5-5")
 # 규칙 기반 태거가 이 개수 이상 태그를 찾으면 LLM 태깅을 생략한다 (토큰 절약)
 RULE_TAG_CONFIDENT = int(os.getenv("RULE_TAG_CONFIDENT", "2"))
 
-# 스케줄러
-ENABLE_SCHEDULER = os.getenv("ENABLE_SCHEDULER", "1") == "1"
-CRAWL_INTERVAL_MIN = int(os.getenv("CRAWL_INTERVAL_MIN", "60"))
+# 갱신 정책: 기본은 사용자가 '공지 새로고침'을 누를 때만 수집한다 (토큰·서버 부담 최소화).
+AUTO_CRAWL = os.getenv("AUTO_CRAWL", "0") == "1"           # 1이면 CRAWL_INTERVAL_MIN마다 자동 수집
+CRAWL_INTERVAL_MIN = int(os.getenv("CRAWL_INTERVAL_MIN", "180"))
+# 인사이트는 사용자가 인사이트 탭을 열 때 하루 1번만 생성한다. 1이면 매일 INSIGHT_HOUR_KST시에 미리 생성.
+AUTO_INSIGHT = os.getenv("AUTO_INSIGHT", "0") == "1"
 INSIGHT_HOUR_KST = int(os.getenv("INSIGHT_HOUR_KST", "7"))
+ENABLE_SCHEDULER = AUTO_CRAWL or AUTO_INSIGHT
 
 # 크롤러 예절
 USER_AGENT = os.getenv(

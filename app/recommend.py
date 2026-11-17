@@ -26,7 +26,8 @@ def recommend(user_id: str, limit: int = 20, max_age_days: int = 120) -> list[di
     topics = sorted((k for k in act), key=lambda k: -act[k])[:60]
     today = date.today().isoformat()
     with get_conn() as c:
-        rows = c.execute("SELECT * FROM notices ORDER BY posted_at DESC LIMIT 2000").fetchall()
+        rows = c.execute(  # 단순 행정 안내는 추천하지 않는다
+            "SELECT * FROM notices WHERE kind IS NULL OR kind <> 'admin' ORDER BY posted_at DESC LIMIT 3000").fetchall()
         booked = {r[0] for r in c.execute("SELECT notice_id FROM bookmarks WHERE user_id=?", (user_id,))}
     out = []
     for r in rows:

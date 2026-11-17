@@ -93,7 +93,13 @@ def fetch_details(sources: list[dict], sess: requests.Session, limit: int) -> in
         content = ""
         if p and not p.detail_from_list():
             try:
-                content = p.parse_detail(_fetch(sess, r["url"]))[:8000]
+                html = _fetch(sess, r["url"])
+                content = p.parse_detail(html)[:8000]
+                real = p.detail_date(html)
+                if real:  # 상세 페이지 작성일로 바로잡기 (목록 날짜와 다를 때)
+                    with get_conn() as c:
+                        c.execute("UPDATE notices SET posted_at=? WHERE id=? AND (posted_at IS NULL OR posted_at<>?)",
+                                  (real, r["id"], real))
                 done += 1
             except Exception as e:  # 본문 실패는 치명적이지 않음 → 빈 문자열로 표시해 재시도 안 함
                 log.warning("detail fail %s: %s", r["url"], e)

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 _PARSERS: dict[str, type["BoardParser"]] = {}
 
@@ -62,30 +62,39 @@ class BoardParser:
         """본문 텍스트. 실패하면 빈 문자열."""
         return ""
 
+    def detail_date(self, html: str) -> str | None:
+        """상세 페이지의 작성일 (있으면 목록 날짜보다 우선). 없으면 None."""
+        return None
+
     def detail_from_list(self) -> bool:
         """True면 상세 페이지를 따로 가져오지 않는다 (RSS/API처럼 목록에 내용이 있는 경우)."""
         return False
 
 
-_DATE_PATTERNS = [
-    re.compile(r"(20\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})"),
-    re.compile(r"\b(\d{2})[.\-/](\d{1,2})[.\-/](\d{1,2})\b"),
-]
+_DATE_RE = re.compile(
+    r"(?<!\d)(?:(20\d{2})|(\d{2}))\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})(?!\d)"
+)
 
 
-def normalize_date(text: str | None) -> str | None:
+def normalize_date(text: str | None, not_after: date | None = None) -> str | None:
+    """텍스트에서 '작성일로 그럴듯한' 첫 날짜를 YYYY-MM-DD로.
+
+    - 2026-11-17 / 2026.11.17 / 26.11.17 / 2026년 11월 17일 지원
+    - 미래 날짜(오늘+1일 초과)나 2000년 이전은 버리고 다음 후보를 본다
+      (본문·제목 속 마감일 '~2027.1.22'를 작성일로 오인하는 문제 방지)
+    """
     if not text:
         return None
-    for i, pat in enumerate(_DATE_PATTERNS):
-        m = pat.search(text)
-        if m:
-            y, mo, d = (int(x) for x in m.groups())
-            if i == 1:
-                y += 2000
-            try:
-                return date(y, mo, d).isoformat()
-            except ValueError:
-                continue
+    limit = not_after or (date.today() + timedelta(days=1))
+    for m in _DATE_RE.finditer(text):
+        y4, y2, mo, d = m.groups()
+        y = int(y4) if y4 else 2000 + int(y2)
+        try:
+            dt = date(y, int(mo), int(d))
+        except ValueError:
+            continue
+        if date(2000, 1, 1) <= dt <= limit:
+            return dt.isoformat()
     return None
 
 
