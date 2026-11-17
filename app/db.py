@@ -25,11 +25,13 @@ CREATE TABLE IF NOT EXISTS notices (
     summary TEXT DEFAULT '',
     deadline TEXT,
     kind TEXT,                   -- activity(활동/기회) | admin(단순 행정 안내). NULL = 미분류
+    grp INTEGER,                 -- 같은 공지 묶음(여러 학과 중복·재공지) 대표 id. app/grouping.py
     pinned INTEGER DEFAULT 0,
     tagged_by TEXT,
     fetched_at TEXT DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_notices_posted ON notices(posted_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notices_grp ON notices(grp);
 
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -137,7 +139,7 @@ def get_conn():
 
 # 기존 DB에 나중에 추가된 컬럼 (CREATE TABLE IF NOT EXISTS로는 안 붙는다)
 _MIGRATIONS = {
-    "notices": {"kind": "TEXT", "ext_key": "TEXT"},
+    "notices": {"kind": "TEXT", "ext_key": "TEXT", "grp": "INTEGER"},
     "insights": {"ctx_hash": "TEXT", "ctx_tokens_est": "INTEGER"},
 }
 

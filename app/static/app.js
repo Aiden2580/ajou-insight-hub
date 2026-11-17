@@ -52,15 +52,30 @@
   function noticeHTML(n, cls = "item") {
     const tags = (n.tags || []).filter((t) => t !== "모집" && !(n.reasons || []).includes(t)).map((t) => `<span class="tag">${esc(t)}</span>`).join(" ");
     const reasons = (n.reasons || []).map((t) => `<span class="tag reason">#${esc(t)}</span>`).join(" ");
-    return `<div class="${cls}" data-id="${n.id}">
+    const srcs = n.sources || [], vers = n.versions || [];
+    const multi = srcs.length > 1, revs = vers.length > 1, grouped = multi || revs;
+    const badges = (multi ? `<span class="badge">${srcs.length}곳 공지</span>` : "") + (revs ? `<span class="badge">${vers.length}회 공지</span>` : "");
+    const srcLabel = multi ? `${esc(sourceName(n.source_id))} 외 ${srcs.length - 1}곳` : esc(sourceName(n.source_id));
+    return `<div class="${cls}${n.expired ? " expired" : ""}${grouped ? " grouped" : ""}" data-id="${n.id}">
       <div class="row-head">
-        <div class="meta">${n.pinned ? '<span class="pin">고정</span>' : ""}${dday(n)}<span>${esc(sourceName(n.source_id))}</span><span>${esc(n.posted_at || "")}</span></div>
+        <div class="meta">${n.expired ? '<span class="closed">마감</span>' : ""}${n.pinned ? '<span class="pin">고정</span>' : ""}${n.expired ? "" : dday(n)}<span>${srcLabel}</span><span>${esc(n.posted_at || "")}</span>${badges}</div>
         <button class="star ${n.bookmarked ? "on" : ""}" title="저장">${n.bookmarked ? "★" : "☆"}</button>
       </div>
-      <a class="title" href="${esc(n.url)}" target="_blank" rel="noopener">${esc(n.title)}</a>
+      <a class="title" href="${esc(n.url)}" target="_blank" rel="noopener"${grouped ? ' data-group="1"' : ""}>${esc(n.title)}${grouped ? ' <span class="caret">▾</span>' : ""}</a>
       ${n.summary ? `<div class="summary">${esc(n.summary)}</div>` : ""}
       <div class="meta" style="margin-top:6px">${reasons} ${tags}</div>
+      ${grouped ? groupPanel(n, srcs, vers) : ""}
     </div>`;
+  }
+  // 묶음 펼침: 어느 학과 공지를 볼지 / 몇 번째 공지를 볼지 버튼으로 고른다
+  function groupPanel(n, srcs, vers) {
+    const btn = (m, label, sub) => `<a class="gbtn" href="${esc(m.url)}" target="_blank" rel="noopener" data-nid="${m.id}">${esc(label)}${sub ? `<small>${esc(sub)}</small>` : ""}</a>`;
+    const srcPart = srcs.length > 1 ? `<div class="gsec"><div class="glabel">어느 곳 공지를 볼까요?</div><div class="gbtns">${
+      srcs.map((m) => btn(m, sourceName(m.source_id), m.posted_at || "")).join("")}</div></div>` : "";
+    const verPart = vers.length > 1 ? `<div class="gsec"><div class="glabel">최초 공지부터 최근 공지까지</div><div class="gbtns">${
+      vers.map((m, i) => btn(m, i === 0 ? "최초 공지" : i === vers.length - 1 ? "최근 공지" : `${i + 1}번째`,
+        `${m.posted_at || ""} · ${m.title.length > 28 ? m.title.slice(0, 28) + "…" : m.title}`)).join("")}</div></div>` : "";
+    return `<div class="gpanel"><div class="ginner">${srcPart}${verPart}</div></div>`;
   }
   // 공지 클릭/저장 → 관심 그래프에 자동 반영
   document.addEventListener("click", async (e) => {
@@ -73,8 +88,12 @@
       const s = e.target.closest(".star"); s.classList.toggle("on", r.bookmarked); s.textContent = r.bookmarked ? "★" : "☆";
       toast(r.bookmarked ? "저장했어요. 관심 그래프에 반영됩니다." : "저장을 취소했어요.");
       G.dirty = true;
-    } else if (e.target.closest("a.title")) {
-      api(`/api/notices/${id}/click`, { method: "POST" }).catch(() => {});
+    } else if (e.target.closest("a.title[data-group]")) {
+      e.preventDefault();  // 묶음은 바로 열지 않고 펼쳐서 고르게 한다
+      box.classList.toggle("open");
+    } else if (e.target.closest("a.title, a.gbtn")) {
+      const a = e.target.closest("a.gbtn");
+      api(`/api/notices/${a ? a.dataset.nid : id}/click`, { method: "POST" }).catch(() => {});
       G.dirty = true;
     }
   });

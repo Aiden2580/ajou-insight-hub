@@ -10,12 +10,26 @@ from app.crawler import parsers  # noqa: F401
 from app.crawler.base import get_parser
 from app.crawler.runner import load_sources, save_items
 from app.db import init_db
+from app.grouping import assign_groups
 from app.interest import add_signals
 
 FIX = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 DEMO_USER = "demo-user-0001"
 
 FIXTURE_MAP = {"kr_ajou_notice": "ajou_main_notice.html", "software_notice": "software_notice.html"}
+
+# 데모용: 같은 공지를 여러 학과가 올린 경우와 재공지(회차)를 보여 주기 위한 사본.
+# 링크는 원본 글로 열리도록 원본 URL에 #출처 조각만 붙인다 (실제 수집에서는 각 학과 글 URL이 들어감).
+DEMO_DUPLICATES = [
+    # (원본 제목에 포함된 문자열, 출처 게시판 id, 제목, 작성일)
+    ("AJOU-ANCHORING", "sw_board_notice", "2026 AJOU-ANCHORING 투자유치 데모데이 참가자 모집안내 (~11.22(일) 24:00까지)", "2026-11-13"),
+    ("AJOU-ANCHORING", "security_board_under-notice", "2026 AJOU-ANCHORING 투자유치 데모데이 참가자 모집안내 (~11.22(일) 24:00까지)", "2026-11-13"),
+    ("AJOU-ANCHORING", "coss_community_community01", "2026 AJOU-ANCHORING 투자유치 데모데이 참가자 모집안내 (~11.22(일) 24:00까지)", "2026-11-14"),
+    ("AJOU-ANCHORING", "kr_ajou_notice", "2026 AJOU-ANCHORING 투자유치 데모데이 참가자 모집안내 (~11.22(일) 24:00까지)", "2026-11-14"),
+    ("AJOU-ANCHORING", "media_board_notice", "[재공지] 2026 AJOU-ANCHORING 투자유치 데모데이 참가자 모집안내 (~11.22(일) 24:00까지)", "2026-11-17"),
+    ("동계방학 현장실습 운영일정", "software_notice", "[앵커] 2026 동계방학 현장실습 운영일정 안내", "2026-10-30"),
+    ("동계방학 현장실습 운영일정", "software_notice", "[수정] [앵커] 2026 동계방학 현장실습 운영일정 안내(★학생 지원신청: ~12/7(월)까지, 기업 추가)", "2026-11-16"),
+]
 
 DEMO_SIGNALS = {
     "folder": [
@@ -50,6 +64,13 @@ def main():
         with __import__("app.db", fromlist=["get_conn"]).get_conn() as c:  # 오프라인 데모: 본문 수집 생략
             c.execute("UPDATE notices SET content='' WHERE content IS NULL")
         print(f"{s['id']}: parsed {len(items)}, new {len(new)}")
+    with __import__("app.db", fromlist=["get_conn"]).get_conn() as c:
+        for needle, src, title, posted in DEMO_DUPLICATES:
+            orig = c.execute("SELECT url FROM notices WHERE title LIKE ? ORDER BY id LIMIT 1", (f"%{needle}%",)).fetchone()
+            if orig:
+                c.execute("INSERT OR IGNORE INTO notices(source_id,url,title,posted_at,content) VALUES(?,?,?,?,'')",
+                          (src, f"{orig['url'].split('#')[0]}#{src}-{posted}", title, posted))
+    print("grouping:", assign_groups())
     print("tagging:", tagger.tag_pending(use_llm=True))
     for kind, items in DEMO_SIGNALS.items():
         add_signals(DEMO_USER, kind, items)

@@ -148,9 +148,16 @@ def tag_pending(use_llm: bool = True) -> dict:
 
 
 def backfill() -> dict:
-    """기존 DB 보정 (토큰 0): 종류 미분류 공지 분류, 마감일 재계산, 미래 작성일 정리."""
+    """기존 DB 보정 (토큰 0): 제외 게시판 글 삭제, 종류 미분류 공지 분류, 마감일 재계산, 미래 작성일 정리, 같은 공지 묶기."""
+    from .grouping import assign_groups
     limit = (date.today() + timedelta(days=1)).isoformat()
     with get_conn() as c:
+        excluded = 0
+        if config.EXCLUDED_SOURCES:
+            q = ",".join("?" * len(config.EXCLUDED_SOURCES))
+            ex = list(config.EXCLUDED_SOURCES)
+            c.execute(f"DELETE FROM bookmarks WHERE notice_id IN (SELECT id FROM notices WHERE source_id IN ({q}))", ex)
+            excluded = c.execute(f"DELETE FROM notices WHERE source_id IN ({q})", ex).rowcount
         rows = c.execute("SELECT id,title,category,posted_at,kind,deadline FROM notices").fetchall()
         fixed_dates = c.execute(
             "UPDATE notices SET posted_at=NULL, content=NULL WHERE posted_at > ?", (limit,)).rowcount
@@ -164,4 +171,6 @@ def backfill() -> dict:
             if r["kind"] is None:
                 c.execute("UPDATE notices SET kind=? WHERE id=?", (classify_kind(r["title"], r["category"]), r["id"]))
                 kinds += 1
-    return {"future_posted_cleared": fixed_dates, "deadlines_recomputed": deadlines, "kinds_classified": kinds}
+    groups = assign_groups()
+    return {"excluded_removed": excluded, "future_posted_cleared": fixed_dates, "deadlines_recomputed": deadlines,
+            "kinds_classified": kinds, "grouped": groups}

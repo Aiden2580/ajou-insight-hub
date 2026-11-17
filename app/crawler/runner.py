@@ -22,7 +22,11 @@ log = logging.getLogger("crawler")
 
 def load_sources() -> list[dict]:
     with open(config.SOURCES_PATH, encoding="utf-8") as f:
-        return json.load(f)["sources"]
+        sources = json.load(f)["sources"]
+    for s in sources:  # 칼럼·보도 위주 게시판은 수집하지 않는다 (config.EXCLUDED_SOURCES)
+        if s["id"] in config.EXCLUDED_SOURCES:
+            s["enabled"] = False
+    return sources
 
 
 def _session() -> requests.Session:

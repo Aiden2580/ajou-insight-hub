@@ -23,8 +23,12 @@ def main():
             ids = [m.get("id") if isinstance(m, dict) else m for m in items]
             claude = [i for i in ids if i and "claude" in str(i)]
             print("Claude 모델:", ", ".join(claude) or "(없음)")
-            for want in (config.TAG_MODEL, config.INSIGHT_MODEL):
-                print(f"  {want}: {'목록에 있음' if want in ids else '목록에 없음 → TAG_MODEL/INSIGHT_MODEL을 위 ID로 바꾸세요'}")
+            for role, want, family in (("TAG_MODEL", config.TAG_MODEL, "haiku"), ("INSIGHT_MODEL", config.INSIGHT_MODEL, "opus")):
+                if want in ids:
+                    print(f"  {role}={want}: 목록에 있음")
+                else:
+                    alt = [i for i in claude if family in str(i).lower()]
+                    print(f"  {role}={want}: 목록에 없음 → .env 의 {role}를 다음 중 하나로 바꾸세요: {', '.join(alt) or '(같은 계열 없음)'}")
         elif r.status_code == 401:
             print("401: 키가 잘못됐거나 다른 BAZE 배포에서 발급된 키입니다.")
     print(json.dumps(llm.check(), ensure_ascii=False, indent=2))

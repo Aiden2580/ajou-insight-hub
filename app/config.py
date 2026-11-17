@@ -26,7 +26,7 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
 LLM_PROVIDER = "baze" if BAZE_API_KEY else ("anthropic" if ANTHROPIC_API_KEY or os.getenv("ANTHROPIC_AUTH_TOKEN") else "none")
 
 # 핵심 가치 = 저비용. 태깅은 대량 작업이라 Sonnet(낮은 effort), 인사이트는 하루 1회라 Opus.
-TAG_MODEL = os.getenv("TAG_MODEL", "claude-sonnet-5-5")
+TAG_MODEL = os.getenv("TAG_MODEL", "claude-haiku-5-5")  # 짧은 분류 작업이라 Haiku로 충분 (Sonnet 대비 약 1/20 비용)
 INSIGHT_MODEL = os.getenv("INSIGHT_MODEL", "claude-opus-5-5")
 # 규칙 기반 태거가 이 개수 이상 태그를 찾으면 LLM 태깅을 생략한다 (토큰 절약)
 RULE_TAG_CONFIDENT = int(os.getenv("RULE_TAG_CONFIDENT", "2"))
@@ -50,3 +50,6 @@ MAX_DETAIL_FETCH_PER_RUN = int(os.getenv("MAX_DETAIL_FETCH_PER_RUN", "150"))
 
 def llm_enabled() -> bool:
     return LLM_PROVIDER != "none"
+
+# 수집에서 제외하는 게시판 (칼럼·보도 기사 위주라 활동 공지가 아님). 이미 모인 글도 서버 시작 시 지운다.
+EXCLUDED_SOURCES = {s.strip() for s in os.getenv("EXCLUDED_SOURCES", "press_rss").split(",") if s.strip()}

@@ -47,6 +47,9 @@ def convert(src: dict) -> dict | None:
         out["enabled"] = False
     if not out["url"]:
         out["enabled"] = False
+    if src["id"] == "press_rss":  # 학보사: 칼럼·보도 기사 위주라 활동 공지가 아님
+        out["enabled"] = False
+        out["note"] = "칼럼·보도 기사 위주라 활동 공지가 아니어서 수집 제외 (EXCLUDED_SOURCES). " + out["note"]
     return out
 
 
