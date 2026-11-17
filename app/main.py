@@ -237,6 +237,6 @@ def status():
             "FROM llm_usage GROUP BY purpose, model")]
         n = c.execute("SELECT COUNT(*) FROM notices").fetchone()[0]
         by = {r[0] or "untagged": r[1] for r in c.execute("SELECT tagged_by, COUNT(*) FROM notices GROUP BY tagged_by")}
-    return {"notices": n, "tagged_by": by, "llm_enabled": config.llm_enabled(),
+    return {"notices": n, "tagged_by": by, "llm_enabled": config.llm_enabled(), "llm_provider": config.LLM_PROVIDER,
             "models": {"tagging": config.TAG_MODEL, "insight": config.INSIGHT_MODEL},
             "llm_usage": usage, "scheduler": scheduler.status()}

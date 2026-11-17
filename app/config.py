@@ -16,10 +16,17 @@ if _env.exists():
 DB_PATH = os.getenv("DB_PATH", str(BASE_DIR / "data" / "hub.db"))
 SOURCES_PATH = os.getenv("SOURCES_PATH", str(BASE_DIR / "app" / "sources.json"))
 
-# Claude API (없으면 규칙 기반 태깅/인사이트로 자동 대체)
+# ---- LLM 연결 ----
+# 1) BAZE_API_KEY 가 있으면 아주LLM(BAZE API Gateway)의 Claude 엔드포인트를 쓴다 (우선).
+# 2) 없으면 ANTHROPIC_API_KEY 로 Anthropic API를 직접 쓴다.
+# 3) 둘 다 없으면 규칙 기반 태깅 + 템플릿 인사이트로 동작한다 (비용 0).
+BAZE_API_KEY = os.getenv("BAZE_API_KEY", "")
+BAZE_BASE_URL = os.getenv("BAZE_BASE_URL", "https://factchat-cloud.mindlogic.ai/v1/gateway/claude")
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-# 핵심 가치 = 저비용. 태깅은 대량·단순 작업이라 가장 저렴한 모델, 인사이트는 하루 1회라 고품질 모델.
-TAG_MODEL = os.getenv("TAG_MODEL", "claude-haiku-5-5")
+LLM_PROVIDER = "baze" if BAZE_API_KEY else ("anthropic" if ANTHROPIC_API_KEY or os.getenv("ANTHROPIC_AUTH_TOKEN") else "none")
+
+# 핵심 가치 = 저비용. 태깅은 대량 작업이라 Sonnet(낮은 effort), 인사이트는 하루 1회라 Opus.
+TAG_MODEL = os.getenv("TAG_MODEL", "claude-sonnet-5-5")
 INSIGHT_MODEL = os.getenv("INSIGHT_MODEL", "claude-opus-5-5")
 # 규칙 기반 태거가 이 개수 이상 태그를 찾으면 LLM 태깅을 생략한다 (토큰 절약)
 RULE_TAG_CONFIDENT = int(os.getenv("RULE_TAG_CONFIDENT", "2"))
@@ -39,4 +46,4 @@ MAX_DETAIL_FETCH_PER_RUN = int(os.getenv("MAX_DETAIL_FETCH_PER_RUN", "150"))
 
 
 def llm_enabled() -> bool:
-    return bool(ANTHROPIC_API_KEY or os.getenv("ANTHROPIC_AUTH_TOKEN"))
+    return LLM_PROVIDER != "none"

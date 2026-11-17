@@ -5,6 +5,8 @@ services:
     runtime: docker
     plan: starter
     envVars:
+      - key: BAZE_API_KEY
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: CRAWL_INTERVAL_MIN

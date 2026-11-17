@@ -23,7 +23,8 @@ PC와 모바일 브라우저 모두에서 동작하는 반응형 웹앱이며(�
 ```bash
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env        # 선택: ANTHROPIC_API_KEY 입력 (없어도 동작)
+cp .env.example .env        # 선택: BAZE_API_KEY(아주LLM) 또는 ANTHROPIC_API_KEY 입력 (없어도 동작)
+python -m scripts.check_llm # 선택: LLM 연결 확인
 python -m scripts.seed_demo # 선택: 오프라인 데모 데이터 + 데모 사용자
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
@@ -34,6 +35,20 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 Docker: `docker build -t ajou-hub . && docker run -p 8000:8000 -v $PWD/data:/data --env-file .env ajou-hub`
 Render.com: 저장소 연결 후 `render.yaml` Blueprint 사용.
+
+## LLM 연결 (아주LLM BAZE / Anthropic)
+
+`.env` 에 키를 넣으면 됩니다. 키는 `.gitignore` 로 커밋에서 제외됩니다.
+
+| 설정 | 동작 |
+|---|---|
+| `BAZE_API_KEY=...` | 아주LLM BAZE API Gateway의 Claude 엔드포인트(`https://factchat-cloud.mindlogic.ai/v1/gateway/claude`) 사용. 사용량은 키를 만든 BAZE 계정에 청구 |
+| `ANTHROPIC_API_KEY=...` | Anthropic API 직접 사용 |
+| 둘 다 없음 | 규칙 태깅 + 템플릿 인사이트 (비용 0) |
+
+모델은 `TAG_MODEL`(기본 `claude-sonnet-5-5`, effort low)과 `INSIGHT_MODEL`(기본 `claude-opus-5-5`)로 바꿀 수 있습니다.
+`python -m scripts.check_llm` 은 게이트웨이의 모델 목록에서 두 ID가 있는지 확인하고 짧은 호출을 한 번씩 보내 봅니다.
+게이트웨이가 구조화 출력이나 effort 파라미터를 지원하지 않으면 자동으로 빼고 다시 호출합니다.
 
 ## 비용을 낮추는 구조
 
@@ -48,7 +63,7 @@ Render.com: 저장소 연결 후 `render.yaml` Blueprint 사용.
 ```
 
 - **태깅**: 고정 태그 체계 21개(`app/taxonomy.py`)로 규칙 태깅을 먼저 하고, 규칙 태그가 2개 미만인 공지만
-  25개씩 묶어 제목 + 본문 앞 160자만 보냅니다(`TAG_MODEL`, 기본 `claude-haiku-5-5`). 공지 태깅 결과는 모든 사용자가 공유하므로 사용자 수와 무관한 고정 비용입니다.
+  25개씩 묶어 제목 + 본문 앞 160자만 보냅니다(`TAG_MODEL`, 기본 `claude-sonnet-5-5`, effort low). 공지 태깅 결과는 모든 사용자가 공유하므로 사용자 수와 무관한 고정 비용입니다.
 - **관심 그래프**: LLM을 쓰지 않습니다. 신호를 키워드로 쪼개 분야(category)·주제(topic) 노드와 동시 등장 간선을 만들고, 신호 종류별 가중치와 30일 반감기를 적용합니다. 상위 60개 주제만 유지해 그래프가 작게 유지됩니다.
 - **추천**: 관심 노드에서 1-hop 확산한 활성도로 공지의 태그·키워드를 점수화합니다(토큰 0). 최신성·마감 임박 가산, 마감 지난 공지 제외.
 - **인사이트**: 원문 대신 그래프 요약만 보냅니다(입력 수백 토큰). 컨텍스트 해시가 이전과 같으면 재생성하지 않고 재사용합니다. 키가 없으면 템플릿 리포트(비용 0).
