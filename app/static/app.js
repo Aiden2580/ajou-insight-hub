@@ -391,7 +391,7 @@
     $("#crawl-state").textContent = `공지 ${st.notices}건 · 마지막 수집 ${st.scheduler.last_crawl || "-"}${st.scheduler.running ? " · 수집 중…" : ""}`;
     const u = st.llm_usage;
     const tagRule = st.tagged_by.rule || 0, tagLLM = st.tagged_by.llm || 0;
-    $("#usage").innerHTML = `LLM ${st.llm_enabled ? "사용 중" : "꺼짐(규칙/템플릿만 사용, 비용 0)"} · 태깅 모델 <code>${esc(st.models.tagging)}</code> · 인사이트 모델 <code>${esc(st.models.insight)}</code><br>
+    $("#usage").innerHTML = `LLM ${st.llm_enabled ? (st.llm_provider === "baze" ? "사용 중 (아주LLM BAZE)" : "사용 중 (Anthropic)") : "꺼짐(규칙/템플릿만 사용, 비용 0)"} · 태깅 모델 <code>${esc(st.models.tagging)}</code> · 인사이트 모델 <code>${esc(st.models.insight)}</code><br>
       태깅: 규칙만으로 처리 ${tagRule}건 / LLM 보강 ${tagLLM}건<br>` +
       (u.length ? u.map((x) => `${esc(x.purpose)} (${esc(x.model)}): 호출 ${x.calls}회 · 입력 ${x.input_tokens} · 출력 ${x.output_tokens} 토큰`).join("<br>") : "아직 LLM 호출 없음");
     const on = src.sources.filter((s) => s.enabled).length;
