@@ -4,9 +4,9 @@
 LLM 없이 로컬에서 키워드로 쪼개 그래프로 만든다. 그래프 구축에는 토큰을 쓰지 않는다.
 
   노드: group(영역 허브: 학습 / 교과 / 비교과 / 교내외 활동)
-        category(고정 태그 체계 중 그래프용 분야) / topic(신호에서 나온 주제어)
-  간선: group─category, category─topic(소속), topic─topic(같은 신호에 함께 등장),
-        교과─과목폴더─파일주제 (학습 폴더 구조)
+        category(고정 태그 체계 중 그래프용 분야) / course(과목) / club(동아리·소학회) / topic(주제어)
+  간선: 트리형. 노드마다 부모 하나 (영역 ─ 분야 ─ 동아리·주제, 교과 ─ 과목 ─ 주제). 주제끼리는 잇지 않는다.
+  학습 폴더는 이름 목록만 받아 app/folders.py 가 과목·동아리·키워드로 골라 준 것을 쓴다.
   가중치: 신호 종류별 가중치 × 시간 감쇠(반감기 30일)
   잡음 제거: 주차·과제·시험·자료 같은 학습 파일 공통어, 숫자 조합, 사이트 이름, 한 번 스친 방문 기록
 """
@@ -17,13 +17,13 @@ import math
 import re
 from collections import defaultdict
 from datetime import datetime, timezone
-from itertools import combinations
 from urllib.parse import unquote, urlparse
 
 from .db import get_conn
 from .taxonomy import CATEGORY_GROUP, GRAPH_EXCLUDED_TAGS, INTEREST_GROUPS, TAXONOMY, keywords, rule_tags
 
-KIND_WEIGHT = {"keyword": 3.0, "bookmark": 2.0, "click": 1.0, "folder": 1.2, "history": 0.6}
+KIND_WEIGHT = {"keyword": 3.0, "bookmark": 2.0, "click": 1.0, "folder": 1.2, "history": 0.6,
+               "course": 2.0, "club": 2.5, "fkeyword": 1.5}
 HALF_LIFE_DAYS = 30
 MAX_TOPICS = 60
 
@@ -110,6 +110,23 @@ def add_signals(user_id: str, kind: str, items: list[str]) -> int:
     return len(items)
 
 
+FOLDER_KINDS = ("folder", "course", "club", "fkeyword")
+
+
+def set_folder_selection(user_id: str, sel: dict) -> int:
+    """학습 폴더에서 고른 과목·동아리·키워드로 교체한다 (다시 연동하면 이전 폴더 신호는 지움)."""
+    rows = [(user_id, kind, json.dumps({"name": it["name"], "category": it.get("category")}, ensure_ascii=False))
+            for key, kind in (("courses", "course"), ("clubs", "club"), ("keywords", "fkeyword"))
+            for it in sel.get(key, [])]
+    with get_conn() as c:
+        c.execute("INSERT OR IGNORE INTO users(id) VALUES(?)", (user_id,))
+        c.execute(f"DELETE FROM signals WHERE user_id=? AND kind IN ({','.join('?' * len(FOLDER_KINDS))})",
+                  (user_id, *FOLDER_KINDS))
+        c.executemany("INSERT INTO signals(user_id,kind,item) VALUES(?,?,?)", rows)
+    rebuild_graph(user_id)
+    return len(rows)
+
+
 def _decay(created_at: str) -> float:
     try:
         t = datetime.fromisoformat(created_at).replace(tzinfo=timezone.utc)
@@ -119,20 +136,50 @@ def _decay(created_at: str) -> float:
     return 0.5 ** (max(days, 0) / HALF_LIFE_DAYS)
 
 
+_KIND_RANK = {"group": 4, "category": 3, "course": 2, "club": 2, "topic": 1}
+MAX_COURSES, MAX_CLUBS = 30, 15
+
+
 def rebuild_graph(user_id: str) -> dict:
+    """트리에 가까운 그래프: 모든 노드는 부모가 하나다.
+
+    영역(group) ─ 분야(category) ─ 동아리(club) / 주제(topic)
+    영역 '교과' ─ 과목(course) ─ 주제(topic)
+    주제는 함께 등장한 분야·과목·동아리 중 가장 강하게 엮인 하나에만 붙고, 없으면 '학습' 영역에 붙는다.
+    주제끼리의 연결(거미줄)은 만들지 않는다.
+    """
     with get_conn() as c:
         sigs = c.execute("SELECT kind,item,created_at FROM signals WHERE user_id=?", (user_id,)).fetchall()
     node_w: dict[str, float] = defaultdict(float)
     node_kind: dict[str, str] = {}
     node_src: dict[str, dict] = defaultdict(lambda: defaultdict(int))
-    edge_w: dict[tuple[str, str], float] = defaultdict(float)
+    aff: dict[str, dict[str, float]] = defaultdict(lambda: defaultdict(float))  # 자식 → 부모 후보 친밀도
 
-    def link(a: str, b: str, w: float):
-        if a != b:
-            edge_w[tuple(sorted((a, b)))] += w
+    def put(label: str, kind: str, w: float, src: str):
+        node_w[label] += w
+        cur = node_kind.get(label)
+        if cur is None or _KIND_RANK[kind] > _KIND_RANK[cur]:
+            node_kind[label] = kind
+        node_src[label][src] += 1
 
     for s in sigs:
         w = KIND_WEIGHT.get(s["kind"], 1.0) * _decay(s["created_at"])
+        if s["kind"] in ("course", "club", "fkeyword"):
+            try:
+                it = json.loads(s["item"])
+            except ValueError:
+                continue
+            name = it.get("name", "").strip()
+            name = name.lower() if name.isascii() else name
+            if not name or name in GRAPH_EXCLUDED_TAGS:
+                continue
+            kind = {"course": "course", "club": "club", "fkeyword": "topic"}[s["kind"]]
+            put(name, kind, w, "folder")
+            cat = it.get("category")
+            if cat in CATEGORY_GROUP and cat not in GRAPH_EXCLUDED_TAGS and cat != name:
+                put(cat, "category", w * 0.5, "folder")
+                aff[name][cat] += w
+            continue
         course = None
         if s["kind"] in ("click", "bookmark"):
             with get_conn() as c:
@@ -143,58 +190,52 @@ def rebuild_graph(user_id: str) -> dict:
             cats = [t for t in json.loads(n["tags"]) if t not in GRAPH_EXCLUDED_TAGS]
         else:
             terms, cats = extract_terms(s["kind"], s["item"])
-            if s["kind"] == "folder":
+            if s["kind"] == "folder":  # 예전 방식(경로 전체)으로 저장된 신호
                 course = _course_of(s["item"])
         cats = [c for c in cats if c in CATEGORY_GROUP]
         for t in terms:
-            node_w[t] += w
-            node_kind.setdefault(t, "topic")
-            node_src[t][s["kind"]] += 1
+            put(t, "topic", w, s["kind"])
         for cat in cats:
-            node_w[cat] += w * 0.5
-            node_kind[cat] = "category"
-            node_src[cat][s["kind"]] += 1
-        for a, b in combinations(sorted(set(terms))[:6], 2):
-            link(a, b, w * 0.5)
-        for t in terms:
-            for cat in cats:
-                link(t, cat, w)
-        if course:  # 교과 ─ 과목 ─ 파일 주제
-            node_kind[course] = "course"
-            node_w[course] += w * 0.5
-            node_src[course][s["kind"]] += 1
+            put(cat, "category", w * 0.5, s["kind"])
+            for t in terms:
+                aff[t][cat] += w
+        if course:
+            put(course, "course", w * 0.5, s["kind"])
             for t in terms:
                 if t != course:
-                    link(course, t, w)
-        elif not cats and s["kind"] in ("history", "keyword"):
-            # 분야를 모르는 학습 주제는 '학습' 영역에 붙인다
-            for t in terms:
-                node_src[t]["_learn"] = 1
+                    aff[t][course] += w * 0.8
 
-    # 잡음 제거: 한 번 스친 약한 주제(예: 방문 기록 1회)는 버리고 상위 N개만 유지
-    topics = sorted((k for k, v in node_kind.items() if v == "topic" and node_w[k] >= 1.0), key=lambda k: -node_w[k])
-    keep = set(topics[:MAX_TOPICS]) | {k for k, v in node_kind.items() if v in ("category", "course")}
+    # 잡음 제거와 크기 제한: 약한 주제(한 번 스친 방문 기록 등)는 버린다
+    def top(kind, n, min_w=0.0):
+        return sorted((k for k, v in node_kind.items() if v == kind and node_w[k] >= min_w), key=lambda k: -node_w[k])[:n]
+    keep = set(top("topic", MAX_TOPICS, 1.0)) | set(top("course", MAX_COURSES)) | set(top("club", MAX_CLUBS)) \
+        | {k for k, v in node_kind.items() if v == "category"}
 
-    # 영역 허브 연결
+    edges: dict[tuple[str, str], float] = {}
     groups_used: dict[str, float] = defaultdict(float)
-    for k in list(keep):
+    for k in keep:
         kind = node_kind[k]
-        g = CATEGORY_GROUP.get(k) if kind == "category" else "교과" if kind == "course" else None
-        if kind == "topic":
-            linked_cat = any((a == k and b in keep and node_kind.get(b) in ("category", "course")) or
-                             (b == k and a in keep and node_kind.get(a) in ("category", "course"))
-                             for (a, b) in edge_w)
-            if not linked_cat:
-                g = "학습"
-        if g:
-            link(k, g, node_w[k] * (1.0 if kind != "topic" else 0.5))
-            groups_used[g] += node_w[k]
+        if kind == "category":
+            parent = CATEGORY_GROUP[k]
+        elif kind == "course":
+            parent = "교과"
+        else:
+            cands = {p: v for p, v in aff[k].items() if p in keep and p != k and
+                     _KIND_RANK[node_kind[p]] > _KIND_RANK[kind]}
+            if kind == "topic" and not cands:
+                parent = "학습"
+            elif not cands:
+                parent = "교내외 활동"  # 분야를 모르는 동아리
+            else:
+                parent = max(cands, key=lambda p: (cands[p], node_w[p]))
+        edges[(k, parent)] = node_w[k]
+        if parent in INTEREST_GROUPS:
+            groups_used[parent] += node_w[k]
     for g, w in groups_used.items():
         node_kind[g] = "group"
         node_w[g] = w
         keep.add(g)
-    for k in keep:
-        node_src[k].pop("_learn", None)
+    # 다른 노드가 붙지 않은 빈 분야도 영역에는 붙어 있다 (위에서 처리됨)
 
     with get_conn() as c:
         c.execute("DELETE FROM interest_nodes WHERE user_id=?", (user_id,))
@@ -205,9 +246,9 @@ def rebuild_graph(user_id: str) -> dict:
         )
         c.executemany(
             "INSERT INTO interest_edges(user_id,a,b,weight) VALUES(?,?,?,?)",
-            [(user_id, a, b, round(w, 4)) for (a, b), w in edge_w.items() if a in keep and b in keep],
+            [(user_id, a, b, round(w, 4)) for (a, b), w in edges.items() if a in keep and b in keep],
         )
-    return {"nodes": len(keep), "edges": sum(1 for (a, b) in edge_w if a in keep and b in keep)}
+    return {"nodes": len(keep), "edges": len(edges)}
 
 
 def load_graph(user_id: str) -> tuple[dict[str, dict], list[dict]]:

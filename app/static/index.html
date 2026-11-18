@@ -30,7 +30,7 @@
         <div class="hud-title">나의 관심사 그래프</div>
         <div class="hud-sub" id="graph-stats">불러오는 중…</div>
         <div class="legend">
-          <span><i class="lg grp"></i>영역</span><span><i class="lg cat"></i>분야</span><span><i class="lg course"></i>과목</span><span><i class="lg topic"></i>주제</span><span><i class="lg act"></i>추천 활동</span>
+          <span><i class="lg grp"></i>영역</span><span><i class="lg cat"></i>분야</span><span><i class="lg course"></i>과목</span><span><i class="lg club"></i>동아리</span><span><i class="lg topic"></i>주제</span><span><i class="lg act"></i>추천 활동</span>
         </div>
         <label class="toggle"><input type="checkbox" id="show-acts" checked> 추천 활동 함께 보기</label>
       </div>
@@ -66,7 +66,7 @@
 
   <!-- 추천 활동 -->
   <section id="view-recs" class="view">
-    <div class="toolbar"><h2>나에게 맞는 아주대 활동</h2><span class="muted small">관심 그래프와 연결된 공지만, 마감 지난 것 제외</span></div>
+    <div class="toolbar"><h2>나에게 맞는 아주대 활동</h2><span class="muted small">관심 그래프와의 관련도 순, 마감 지난 것 제외</span></div>
     <div class="cards" id="recs"></div>
   </section>
 
@@ -95,8 +95,9 @@
     <div class="grid2">
       <div class="panel">
         <h3>📁 학습 폴더</h3>
-        <p class="muted small">폴더를 고르면 <b>파일 경로(이름)만</b> 전송됩니다. 파일 내용은 업로드되지 않아요.</p>
-        <label class="file-btn">폴더 선택<input type="file" id="folder-input" webkitdirectory directory multiple hidden></label>
+        <p class="muted small">폴더를 고르면 <b>파일·폴더 이름만</b> 읽습니다(내용은 열지 않음). 프로젝트 폴더(Visual Studio·Unity 등)와 빌드·캐시 폴더는 건너뛰고,
+          이름 목록에서 <b>수강 과목·동아리/소학회·핵심 키워드</b>만 골라 그래프에 넣어요. 다시 연동하면 이전 폴더 결과를 바꿉니다.</p>
+        <button class="file-btn" id="folder-pick" type="button">폴더 선택</button><input type="file" id="folder-input" webkitdirectory directory multiple hidden>
         <div class="small" id="folder-status"></div>
       </div>
       <div class="panel">
