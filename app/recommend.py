@@ -65,4 +65,11 @@ def recommend(user_id: str, limit: int = 20, max_age_days: int = 120) -> list[di
             continue  # 관심과 무관한 공지는 추천에서 제외
         out.append(n)
     out.sort(key=lambda x: -x["score"])
-    return out[:limit]
+    # 같은 공지 묶음(여러 학과 중복·재공지)은 점수가 가장 높은 글 하나만
+    seen, uniq = set(), []
+    for n in out:
+        g = n.get("grp") or n["id"]
+        if g not in seen:
+            seen.add(g)
+            uniq.append(n)
+    return uniq[:limit]

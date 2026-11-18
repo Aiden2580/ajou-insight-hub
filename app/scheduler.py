@@ -10,6 +10,7 @@ import threading
 import time
 from datetime import datetime
 
+from .grouping import assign_groups
 from . import config, insight, tagger
 from .crawler.runner import crawl_all
 from .db import get_conn, meta_get, meta_set
@@ -26,9 +27,10 @@ def run_pipeline() -> dict:
         _state["running"] = True
         _state["started_at"] = datetime.now(insight.KST).isoformat(timespec="seconds")
         crawl = crawl_all()
+        groups = assign_groups()
         tagging = tagger.tag_pending()
         res = {"ok": crawl["ok"], "failed": crawl["failed"], "new": crawl["new"],
-               "details_fetched": crawl["details_fetched"], "tagging": tagging}
+               "details_fetched": crawl["details_fetched"], "tagging": tagging, "grouping": groups}
         _state["last_result"] = res
         meta_set("last_crawl", datetime.now(insight.KST).isoformat(timespec="seconds"))
         return res

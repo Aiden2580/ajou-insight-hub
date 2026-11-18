@@ -11,7 +11,7 @@ from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Query, Upl
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, insight, interest, scheduler, tagger
+from . import config, grouping, insight, interest, scheduler, tagger
 from .crawler.base import available_parsers
 from .crawler.runner import load_sources
 from .db import get_conn, init_db, row_to_notice
@@ -75,32 +75,60 @@ def list_notices(
     if active_only:
         where.append("(deadline IS NULL OR deadline >= date('now','+9 hours'))")
     w = ("WHERE " + " AND ".join(where)) if where else ""
+    # 같은 공지 묶음(여러 학과 중복·재공지)은 가장 최근 글 하나로 보여 준다.
+    # 마감이 확정적으로 지난 활동은 어떤 정렬이든 맨 뒤로 (expired=1).
     order = {
         "latest": "posted_at DESC, id DESC",
-        "deadline": "CASE WHEN deadline IS NULL OR deadline < date('now','+9 hours') THEN 1 ELSE 0 END, deadline ASC, posted_at DESC",
+        "deadline": "CASE WHEN g_deadline IS NULL THEN 1 ELSE 0 END, g_deadline ASC, posted_at DESC",
         "tag": "tags ASC, posted_at DESC",
-    }.get(sort, "posted_at DESC")
+    }.get(sort, "posted_at DESC, id DESC")
+    grouped = f"""
+        WITH f AS (SELECT n.*, COALESCE(n.grp, n.id) AS g FROM notices n {w}),
+        r AS (SELECT f.*,
+                     ROW_NUMBER() OVER (PARTITION BY g ORDER BY COALESCE(posted_at,'') DESC, id DESC) AS rn,
+                     COALESCE(deadline, MAX(deadline) OVER (PARTITION BY g)) AS g_deadline
+              FROM f)
+        SELECT r.*, CASE WHEN g_deadline < date('now','+9 hours') THEN 1 ELSE 0 END AS expired
+        FROM r WHERE rn = 1"""
     with get_conn() as c:
-        total = c.execute(f"SELECT COUNT(*) FROM notices {w}", args).fetchone()[0]
-        rows = c.execute(f"SELECT * FROM notices {w} ORDER BY {order} LIMIT ? OFFSET ?",
+        total = c.execute(f"SELECT COUNT(*) FROM ({grouped})", args).fetchone()[0]
+        rows = c.execute(f"SELECT * FROM ({grouped}) ORDER BY expired ASC, {order} LIMIT ? OFFSET ?",
                          args + [size, (page - 1) * size]).fetchall()
         booked = set()
         if x_user_id and _uid_re.match(x_user_id):
             booked = {r[0] for r in c.execute("SELECT notice_id FROM bookmarks WHERE user_id=?", (x_user_id,))}
-    items = [row_to_notice(r) for r in rows]
+        items = []
+        for r in rows:
+            it = row_to_notice(r)
+            it["deadline"] = it.pop("g_deadline")
+            it["expired"] = bool(it["expired"])
+            for k in ("g", "rn"):
+                it.pop(k, None)
+            items.append(it)
+        attach_groups(c, items)
     for it in items:
         it["bookmarked"] = it["id"] in booked
     return {"total": total, "page": page, "size": size, "items": items}
+
+
+def attach_groups(c, items: list[dict]) -> None:
+    """묶음이 2건 이상이면 펼침 정보(출처별 글, 회차)를 붙인다."""
+    gids = [it.get("grp") or it["id"] for it in items]
+    members = grouping.group_members(c, list(set(gids)))
+    for it, g in zip(items, gids):
+        ms = members.get(g, [])
+        if len(ms) > 1:
+            it.update(grouping.describe(ms))
 
 
 @app.get("/api/tags")
 def tags(include_admin: bool = False):
     cnt = Counter()
     w = "" if include_admin else "WHERE kind IS NULL OR kind <> 'admin'"
-    with get_conn() as c:
-        for (t,) in c.execute(f"SELECT tags FROM notices {w}"):
+    with get_conn() as c:  # 묶음 단위로 센다
+        for (t,) in c.execute(f"SELECT tags FROM notices {w} GROUP BY COALESCE(grp, id)"):
             cnt.update(json.loads(t or "[]"))
-        admin_n = c.execute("SELECT COUNT(*) FROM notices WHERE kind='admin'").fetchone()[0]
+        admin_n = c.execute("SELECT COUNT(DISTINCT COALESCE(grp, id)) FROM notices WHERE kind='admin'").fetchone()[0]
     return {"tags": [{"tag": k, "count": cnt.get(k, 0)} for k in TAXONOMY if cnt.get(k, 0)], "admin_count": admin_n}
 
 
@@ -209,7 +237,10 @@ def reset_signals(x_user_id: str | None = Header(None)):
 # ---------- 추천 / 인사이트 ----------
 @app.get("/api/recommendations")
 def recommendations(limit: int = 20, x_user_id: str | None = Header(None)):
-    return recommend(uid(x_user_id), limit=limit)
+    recs = recommend(uid(x_user_id), limit=limit)
+    with get_conn() as c:
+        attach_groups(c, recs)
+    return recs
 
 
 @app.get("/api/insight")

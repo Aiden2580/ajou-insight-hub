@@ -1379,8 +1379,8 @@
       "org": "아주대학보",
       "group": "센터",
       "url": "https://cdn.press.ajou.ac.kr/rss/gns_allArticle.xml",
-      "enabled": true,
-      "note": "유일하게 RSS 제공. 섹션별 gns_S1N1.xml 등",
+      "enabled": false,
+      "note": "칼럼·보도 기사 위주라 활동 공지가 아니어서 수집 제외 (EXCLUDED_SOURCES). 유일하게 RSS 제공. 섹션별 gns_S1N1.xml 등",
       "parser": "rss"
     },
     {
