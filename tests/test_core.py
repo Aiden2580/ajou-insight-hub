@@ -64,7 +64,7 @@ def test_end_to_end_demo():
     recs = recommend(DEMO_USER, limit=10)
     assert recs and all(r["reasons"] for r in recs)
     ins = insight.generate(DEMO_USER)
-    assert ins["generated_by"] == "template" and "할 일" in ins["content_md"]
+    assert ins["generated_by"] == "template" and "오늘의 주제" in ins["content_md"] and ins["topic"]
 
 
 def test_pyxis_parser():

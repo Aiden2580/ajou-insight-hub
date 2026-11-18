@@ -318,11 +318,31 @@
     return out.join("\n");
   }
   function renderInsight(ins) {
-    if (!ins) { $("#insight-body").innerHTML = '<p class="muted">아직 생성된 인사이트가 없어요. 데이터 연동 후 다시 열면 오늘 인사이트가 만들어져요.</p>'; $("#insight-meta").textContent = ""; return; }
+    CUR_INS = ins;
+    $("#insight-deep-body").hidden = true;
+    $("#insight-deep").hidden = !ins;
+    if (!ins) { $("#insight-body").innerHTML = '<p class="muted">아직 칼럼이 없어요. 데이터 연동 후 다시 열면 관심사에서 출발한 오늘의 칼럼이 만들어져요.</p>'; $("#insight-meta").textContent = ""; return; }
     $("#insight-body").innerHTML = md(ins.content_md);
-    const by = { template: "템플릿(비용 0)", reused: "어제와 동일 컨텍스트 → 재사용(비용 0)" }[ins.generated_by] || ins.generated_by;
-    $("#insight-meta").textContent = `${ins.date} · ${by}${ins.ctx_tokens_est ? ` · 입력 컨텍스트 약 ${ins.ctx_tokens_est} 토큰` : ""}`;
+    $("#insight-deep").textContent = ins.deep_md ? "더 알아보기 ↓" : "더 알아보기 ↓ (심층 글 + 논문·자료)";
+    const by = { template: "템플릿(비용 0)", reused: "재사용(비용 0)" }[ins.generated_by] || ins.generated_by;
+    $("#insight-meta").textContent = `${ins.date} · ${by}`;
   }
+  let CUR_INS = null;
+  // 더 알아보기: 한 번 만든 심층 글은 서버에 저장돼 있어 다시 누르면 바로 열린다 (토큰 0)
+  $("#insight-deep").addEventListener("click", async (e) => {
+    const box = $("#insight-deep-body"), b = e.currentTarget;
+    if (!CUR_INS) return;
+    if (!box.hidden) { box.hidden = true; b.textContent = "더 알아보기 ↓"; return; }
+    let ins = CUR_INS;
+    if (!ins.deep_md) {
+      b.disabled = true; b.textContent = "자료를 찾아 정리하는 중… (1~2분)";
+      try { ins = await api(`/api/insight/deep?date=${CUR_INS.date}`, { method: "POST" }); CUR_INS = ins; }
+      catch (err) { toast("더 알아보기 실패: " + err.message); b.disabled = false; b.textContent = "더 알아보기 ↓"; return; }
+      b.disabled = false;
+    }
+    box.innerHTML = md(ins.deep_md); box.hidden = false; b.textContent = "접기 ↑";
+    box.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
   const today = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);  // KST
   let autoTried = false;
   async function loadInsight(date) {
@@ -330,7 +350,7 @@
     // 하루 1회 자동 생성: 오늘 것이 없을 때만 (서버도 오늘 것이 있으면 재생성하지 않음)
     if (!date && !autoTried && (!d.history.length || d.history[0].date !== today())) {
       autoTried = true;
-      $("#insight-body").innerHTML = '<p class="muted">오늘의 인사이트를 만드는 중…</p>';
+      $("#insight-body").innerHTML = '<p class="muted">오늘의 칼럼을 쓰는 중… (최근 소식을 찾느라 1분 정도 걸릴 수 있어요)</p>';
       try { await api("/api/insight/generate", { method: "POST" }); d = await api("/api/insight"); } catch (e) { /* 실패 시 기존 기록 표시 */ }
     }
     const sel = $("#insight-date");
@@ -341,7 +361,7 @@
   $("#insight-date").addEventListener("change", (e) => loadInsight(e.target.value));
   $("#insight-gen").addEventListener("click", async (e) => {
     e.target.disabled = true; e.target.textContent = "생성 중…";
-    try { const ins = await api("/api/insight/generate?force=true", { method: "POST" }); await loadInsight(ins.date); toast("인사이트를 다시 만들었어요."); }
+    try { const ins = await api("/api/insight/generate?force=true", { method: "POST" }); await loadInsight(ins.date); toast("칼럼을 다시 썼어요."); }
     catch (err) { toast("생성 실패: " + err.message); }
     e.target.disabled = false; e.target.textContent = "다시 생성";
   });

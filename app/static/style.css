@@ -141,9 +141,12 @@ table.src td, table.src th { border-bottom: 1px solid var(--line); padding: 6px 
   .paper h1 { font-size: 22px; }
 }
 
+.more-wrap { max-width: 210mm; margin: 18px auto; text-align: center; }
+.more-wrap button { padding: 12px 22px; font-size: 15px; }
+.paper.deep { margin-top: 0; min-height: 0; border-top: 6px solid #b48cff; }
 @media print {
   body { background: #fff; }
-  .topbar, .bottom-tabs, .toolbar, .toast { display: none !important; }
+  .topbar, .bottom-tabs, .toolbar, .toast, .more-wrap { display: none !important; }
   main { padding: 0; max-width: none; }
   .view { display: none !important; }
   #view-insight { display: block !important; }

@@ -255,6 +255,15 @@ def gen_insight(force: bool = False, x_user_id: str | None = Header(None)):
     return insight.generate(uid(x_user_id), force=force)
 
 
+@app.post("/api/insight/deep")
+def deep_insight(date: str | None = None, force: bool = False, x_user_id: str | None = Header(None)):
+    """'더 알아보기': 칼럼 심층 글 + 논문·자료. 이미 만든 것이 있으면 그대로(토큰 0)."""
+    ins = insight.deep_dive(uid(x_user_id), date, force=force)
+    if not ins:
+        raise HTTPException(404, "칼럼이 없습니다")
+    return ins
+
+
 # ---------- 운영 ----------
 @app.get("/api/sources")
 def sources():
