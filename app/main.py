@@ -11,7 +11,7 @@ from fastapi import Body, FastAPI, File, Form, Header, HTTPException, Query, Upl
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, grouping, insight, interest, scheduler, tagger
+from . import config, folders, grouping, insight, interest, scheduler, tagger
 from .crawler.base import available_parsers
 from .crawler.runner import load_sources
 from .db import get_conn, init_db, row_to_notice
@@ -185,8 +185,21 @@ def add_signals(payload: dict = Body(...), x_user_id: str | None = Header(None))
     kind = payload.get("kind")
     if kind not in ("history", "folder", "keyword"):
         raise HTTPException(400, "kind는 history | folder | keyword")
+    if kind == "folder":
+        return folder_signals({"paths": payload.get("items", [])}, x_user_id)
     n = interest.add_signals(u, kind, list(payload.get("items", [])))
     return {"added": n, **interest.graph_payload(u)}
+
+
+@app.post("/api/signals/folder")
+def folder_signals(payload: dict = Body(...), x_user_id: str | None = Header(None)):
+    """학습 폴더: 파일·폴더 '이름' 목록만 받는다. 과목·동아리·키워드만 골라 그래프에 넣는다 (같은 목록은 캐시)."""
+    u = uid(x_user_id)
+    paths = [str(p) for p in payload.get("paths", [])][:20000]
+    sel = folders.select(paths)
+    n = interest.set_folder_selection(u, sel)
+    return {"added": n, "selected": {k: sel[k] for k in ("courses", "clubs", "keywords")}, "by": sel["by"],
+            "cached": sel["cached"], "received": len(paths), "kept": sel.get("kept", 0), **interest.graph_payload(u)}
 
 
 def _parse_history_file(raw: bytes, filename: str) -> list[str]:
