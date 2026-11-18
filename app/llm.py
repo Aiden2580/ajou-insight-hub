@@ -139,6 +139,73 @@ def text_call(purpose: str, model: str, system: str, user: str,
     return "".join(b.text for b in resp.content if b.type == "text") or None
 
 
+WEB_SEARCH_TOOL = "web_search_20260209"
+
+
+def research_call(purpose: str, model: str, system: str, user: str, max_uses: int = 4,
+                  max_tokens: int = 12000, effort: str = "medium") -> dict | None:
+    """웹 검색(서버 도구)을 켜고 글을 쓴다. 최신 소식·논문은 실제 검색 결과에서만 인용하게 하기 위함.
+
+    돌려주는 값: {"text", "sources": [{url,title}], "searched": bool}
+    게이트웨이가 웹 검색 도구를 지원하지 않으면(400) 검색 없이 쓰고 searched=False 로 알려 준다.
+    """
+    cl = client()
+    if cl is None:
+        return None
+    import anthropic
+    tools = [{"type": WEB_SEARCH_TOOL, "name": "web_search", "max_uses": max_uses}]
+    messages = [{"role": "user", "content": user}]
+    base = dict(model=model, max_tokens=max_tokens, system=system, output_config={"effort": effort})
+    texts, cited, seen, searched = [], {}, {}, True
+    try:
+        for _ in range(3):  # 서버 도구가 길어지면 pause_turn → 이어서 다시 보낸다
+            try:
+                with cl.messages.stream(**base, tools=tools, messages=messages) as s:
+                    resp = s.get_final_message()
+            except anthropic.BadRequestError as e:
+                if not searched:
+                    raise
+                log.info("웹 검색 도구 거부됨 → 검색 없이 작성: %s", e)
+                searched = False
+                text = text_call(purpose, model, system + "\n(이번에는 웹 검색을 쓸 수 없다. 특정 최신 소식·날짜·수치를 "
+                                 "지어내지 말고, 잘 알려진 사실과 개념 위주로 쓴다. 링크는 넣지 않는다.)", user,
+                                 max_tokens=max_tokens, effort=effort)
+                return {"text": text, "sources": [], "searched": False} if text else None
+            _log_usage(purpose, model, resp.usage)
+            if resp.stop_reason == "refusal":
+                return None
+            for b in resp.content:
+                if b.type == "text":
+                    texts.append(b.text)
+                    for ct in getattr(b, "citations", None) or []:
+                        url = getattr(ct, "url", None)
+                        if url:
+                            cited.setdefault(url, getattr(ct, "title", None) or url)
+                elif b.type == "web_search_tool_result" and isinstance(b.content, list):
+                    for r in b.content:
+                        url = getattr(r, "url", None)
+                        if url:
+                            seen.setdefault(url, getattr(r, "title", None) or url)
+            if resp.stop_reason != "pause_turn":
+                break
+            messages = messages + [{"role": "assistant", "content": resp.content}]
+    except anthropic.RateLimitError as e:
+        log.warning("rate limited: %s", e)
+        return None
+    except anthropic.APIStatusError as e:
+        log.warning("api error %s: %s", e.status_code, e)
+        return None
+    except anthropic.APIConnectionError as e:
+        log.warning("connection error: %s", e)
+        return None
+    text = "".join(texts).strip()
+    if not text:
+        return None
+    # 본문에서 실제로 인용한 출처 우선, 없으면 검색해서 읽은 결과 일부
+    src = cited or dict(list(seen.items())[:6])
+    return {"text": text, "sources": [{"url": u, "title": t} for u, t in list(src.items())[:12]], "searched": True}
+
+
 def check() -> dict:
     """연결 확인용: 모델 목록 + 아주 짧은 호출 1회."""
     cl = client()

@@ -73,6 +73,9 @@ CREATE TABLE IF NOT EXISTS insights (
     generated_by TEXT,
     ctx_hash TEXT,
     ctx_tokens_est INTEGER,
+    topic TEXT,                  -- 오늘 칼럼의 주제 (며칠간 같은 주제 반복 방지)
+    deep_md TEXT,                -- '더 알아보기' 심층 글 (한 번 만들면 재사용)
+    deep_by TEXT,
     created_at TEXT DEFAULT (datetime('now')),
     PRIMARY KEY (user_id, date)
 );
@@ -140,7 +143,7 @@ def get_conn():
 # 기존 DB에 나중에 추가된 컬럼 (CREATE TABLE IF NOT EXISTS로는 안 붙는다)
 _MIGRATIONS = {
     "notices": {"kind": "TEXT", "ext_key": "TEXT", "grp": "INTEGER"},
-    "insights": {"ctx_hash": "TEXT", "ctx_tokens_est": "INTEGER"},
+    "insights": {"ctx_hash": "TEXT", "ctx_tokens_est": "INTEGER", "topic": "TEXT", "deep_md": "TEXT", "deep_by": "TEXT"},
 }
 
 

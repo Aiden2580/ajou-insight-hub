@@ -55,11 +55,13 @@
   <section id="view-insight" class="view">
     <div class="toolbar">
       <select id="insight-date"></select>
-      <button id="insight-gen" class="ghost" title="오늘 인사이트는 하루 한 번 자동으로 만들어집니다. 다시 만들면 LLM 토큰을 씁니다.">다시 생성</button>
+      <button id="insight-gen" class="ghost" title="오늘의 칼럼은 하루 한 편 자동으로 만들어집니다. 다시 만들면 LLM 토큰을 씁니다.">다시 생성</button>
       <button id="insight-print" class="ghost">인쇄 / PDF</button>
       <span class="muted small" id="insight-meta"></span>
     </div>
     <article class="paper" id="insight-body"><p class="muted">불러오는 중…</p></article>
+    <div class="more-wrap"><button id="insight-deep" class="primary" hidden>더 알아보기 ↓</button></div>
+    <article class="paper deep" id="insight-deep-body" hidden></article>
   </section>
 
   <!-- 추천 활동 -->
