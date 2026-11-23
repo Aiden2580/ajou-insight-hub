@@ -58,7 +58,7 @@
     const srcLabel = multi ? `${esc(sourceName(n.source_id))} 외 ${srcs.length - 1}곳` : esc(sourceName(n.source_id));
     return `<div class="${cls}${n.expired ? " expired" : ""}${grouped ? " grouped" : ""}" data-id="${n.id}">
       <div class="row-head">
-        <div class="meta">${n.expired ? '<span class="closed">마감</span>' : ""}${n.pinned ? '<span class="pin">고정</span>' : ""}${n.expired ? "" : dday(n)}<span>${srcLabel}</span><span>${esc(n.posted_at || "")}</span>${badges}</div>
+        <div class="meta">${n.expired ? '<span class="closed">마감</span>' : ""}${n.pinned ? '<span class="pin">고정</span>' : ""}${n.expired ? "" : dday(n)}<span>${srcLabel}</span><span>${esc(n.posted_at || "")}</span>${badges}${n.relevance ? `<span class="relevance" title="관심 그래프와의 관련도">관련도 ${n.relevance}</span>` : ""}</div>
         <button class="star ${n.bookmarked ? "on" : ""}" title="저장">${n.bookmarked ? "★" : "☆"}</button>
       </div>
       <a class="title" href="${esc(n.url)}" target="_blank" rel="noopener"${grouped ? ' data-group="1"' : ""}>${esc(n.title)}${grouped ? ' <span class="caret">▾</span>' : ""}</a>
@@ -127,25 +127,19 @@
     g.categories.forEach((c, i) => { catColor[c] = GROUP_COLORS[(g.category_group || {})[c]] || CAT_COLORS[i % CAT_COLORS.length]; });
     const ids = new Set(g.nodes.map((n) => n.id));
     const kindOf = Object.fromEntries(g.nodes.map((n) => [n.id, n.kind]));
+    // 트리: 링크는 (자식 → 부모). 색은 부모를 따라 올라가 영역/분야 색을 물려받는다
+    const parentOf = {};
+    g.links.forEach((l) => { parentOf[l.source] = l.target; });
+    const colorOf = (id, depth = 0) => catColor[id] || (depth < 6 && parentOf[id] ? colorOf(parentOf[id], depth + 1) : "#c9d4ff");
     g.nodes.forEach((n) => { if (n.kind === "course") catColor[n.id] = GROUP_COLORS["교과"]; });
-    const rank = { category: 3, course: 2, group: 1 };
-    const best = {};
-    g.links.forEach((l) => {
-      for (const [a, b] of [[l.source, l.target], [l.target, l.source]]) {
-        const r = rank[kindOf[b]] || 0;
-        if (kindOf[a] !== "topic" || !r) continue;
-        const cur = best[a];
-        if (!cur || r > cur.r || (r === cur.r && cur.w < l.weight)) best[a] = { c: b, w: l.weight, r };
-      }
-    });
-    const nodes = g.nodes.map((n) => ({ ...n, color: n.kind === "topic" ? catColor[best[n.id]?.c] || "#c9d4ff" : catColor[n.id] || "#c9d4ff" }));
+    const nodes = g.nodes.map((n) => ({ ...n, color: colorOf(n.id) }));
     const links = g.links.map((l) => ({ ...l }));
     if (G.showActs) {
-      recs.forEach((r) => {
-        const targets = (r.reasons || []).filter((x) => ids.has(x));
-        if (!targets.length) return;
+      recs.forEach((r) => {  // 추천 활동은 가장 관련 있는 노드 하나에만 매달아 거미줄을 만들지 않는다
+        const t = (r.reasons || []).find((x) => ids.has(x) && kindOf[x] !== "group") || (r.reasons || []).find((x) => ids.has(x));
+        if (!t) return;
         nodes.push({ id: "act:" + r.id, label: r.title.length > 22 ? r.title.slice(0, 22) + "…" : r.title, kind: "act", weight: 0.35, notice: r, color: "#ffb547" });
-        targets.forEach((t) => links.push({ source: "act:" + r.id, target: t, weight: 0.5, act: true }));
+        links.push({ source: "act:" + r.id, target: t, weight: 0.5, act: true });
       });
     }
     G.recs = recs;
@@ -155,7 +149,7 @@
     const empty = g.nodes.length === 0;
     $("#graph-empty").hidden = !empty;
     const cnt = (k) => g.nodes.filter((n) => n.kind === k).length;
-    $("#graph-stats").textContent = empty ? "데이터 없음" : `영역 ${cnt("group")} · 분야 ${cnt("category")} · 과목 ${cnt("course")} · 주제 ${cnt("topic")} · 연결 ${g.links.length}`;
+    $("#graph-stats").textContent = empty ? "데이터 없음" : `영역 ${cnt("group")} · 분야 ${cnt("category")} · 과목 ${cnt("course")} · 동아리 ${cnt("club")} · 주제 ${cnt("topic")}`;
     drawGraph();
   }
 
@@ -169,8 +163,8 @@
       G.neighbors.get(a).add(b); G.neighbors.get(b).add(a);
     });
     const radius = (n) => n.kind === "group" ? 16 + 8 * n.weight : n.kind === "category" ? 9 + 10 * n.weight
-      : n.kind === "course" ? 7 + 7 * n.weight : n.kind === "act" ? 5 : 4 + 8 * n.weight;
-    const big = (n) => n.kind === "group" || n.kind === "category" || n.kind === "course";
+      : n.kind === "course" || n.kind === "club" ? 7 + 7 * n.weight : n.kind === "act" ? 5 : 4 + 8 * n.weight;
+    const big = (n) => n.kind === "group" || n.kind === "category" || n.kind === "course" || n.kind === "club";
     const isLit = (id) => !G.hover || G.hover === id || G.neighbors.get(G.hover)?.has(id);
     const linkId = (x) => (typeof x === "object" ? x.id : x);
 
@@ -212,6 +206,11 @@
             ctx.fillStyle = n.color + "33"; ctx.shadowColor = n.color; ctx.shadowBlur = 26; ctx.fill(); ctx.shadowBlur = 0;
             ctx.lineWidth = 2.5; ctx.strokeStyle = n.color; ctx.stroke();
             ctx.beginPath(); ctx.arc(n.x, n.y, r * 0.35, 0, 2 * Math.PI); ctx.fillStyle = n.color; ctx.fill();
+          } else if (n.kind === "club") {  // 동아리·소학회: 육각형
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) { const a = Math.PI / 3 * i; ctx[i ? "lineTo" : "moveTo"](n.x + r * Math.cos(a), n.y + r * Math.sin(a)); }
+            ctx.closePath(); ctx.fillStyle = n.color; ctx.shadowColor = n.color; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0;
+            if (G.hover === n.id) { ctx.lineWidth = 2 / scale; ctx.strokeStyle = "#fff"; ctx.stroke(); }
           } else if (n.kind === "course") {
             ctx.beginPath(); ctx.roundRect ? ctx.roundRect(n.x - r, n.y - r * 0.75, 2 * r, 1.5 * r, r * 0.35) : ctx.rect(n.x - r, n.y - r * 0.75, 2 * r, 1.5 * r);
             ctx.fillStyle = n.color; ctx.shadowColor = n.color; ctx.shadowBlur = 12; ctx.fill(); ctx.shadowBlur = 0;
@@ -240,7 +239,7 @@
           ctx.globalAlpha = 1;
         })
         .nodePointerAreaPaint((n, color, ctx) => { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(n.x, n.y, radius(n) + 4, 0, 2 * Math.PI); ctx.fill(); });
-      G.fg.d3Force("charge").strength((n) => (n.kind === "group" ? -260 : n.kind === "category" ? -160 : n.kind === "course" ? -110 : -45));
+      G.fg.d3Force("charge").strength((n) => (n.kind === "group" ? -260 : n.kind === "category" ? -160 : n.kind === "course" || n.kind === "club" ? -110 : -45));
       // 흩어진 클러스터를 화면 중앙으로 부드럽게 모으는 중력
       let gNodes = [];
       const gravity = (alpha) => gNodes.forEach((n) => { n.vx -= n.x * 0.045 * alpha; n.vy -= n.y * 0.045 * alpha; });
@@ -264,10 +263,10 @@
       return;
     }
     const nb = [...(G.neighbors.get(n.id) || [])].filter((x) => !x.startsWith("act:"));
-    const src = Object.entries(n.sources || {}).map(([k, v]) => `${{ history: "방문 기록", folder: "학습 폴더", keyword: "직접 입력", click: "공지 열람", bookmark: "저장" }[k] || k} ${v}`).join(" · ");
+    const src = Object.entries(n.sources || {}).map(([k, v]) => `${{ history: "방문 기록", folder: "학습 폴더", keyword: "직접 입력", click: "공지 열람", bookmark: "저장" }[k] || k}`).join(" · ");
     const rel = (G.recs || []).filter((r) => (r.reasons || []).includes(n.id) || (r.tags || []).includes(n.id));
     body.innerHTML = `
-      <div class="muted small">${{ group: "영역", category: "분야", course: "과목", topic: "주제" }[n.kind] || "주제"} · 관심도 ${Math.round(n.weight * 100)}</div>
+      <div class="muted small">${{ group: "영역", category: "분야", course: "과목", club: "동아리·소학회", topic: "주제" }[n.kind] || "주제"} · 관심도 ${Math.round(n.weight * 100)}</div>
       <h3>${esc(n.label)}</h3>
       <div class="small muted">출처: ${esc(src || "-")}</div>
       <p class="small">연결된 노드</p>
@@ -425,9 +424,53 @@
     toast(msg + ". 관심 그래프를 확인해 보세요!");
     loadSigSummary();
   }
+  // ---- 학습 폴더: 파일 '이름'만 읽는다 (ls처럼). 내용은 열지 않음 ----
+  const JUNK = new Set(("node_modules .git .svn .vs .vscode .idea __pycache__ .pytest_cache venv .venv env site-packages bin obj debug release " +
+    "x64 x86 arm64 packages library temp logs usersettings projectsettings build builds dist out target .gradle gradle .next .cache cache " +
+    "coverage ipch .ipynb_checkpoints $recycle.bin __macosx vendor cmakefiles deriveddata pods intermediate saved binaries plugins").split(" "));
+  const PROJECT = /(\.sln|\.csproj|\.vcxproj|\.xcodeproj|\.uproject|package\.json|pom\.xml|build\.gradle|cmakelists\.txt|cargo\.toml|go\.mod|pyproject\.toml|setup\.py)$/i;
+  const MAX_ENTRIES = 8000, MAX_DEPTH = 6;
+  async function walkNames(dir, prefix, out, depth) {
+    // 1단계: 이 폴더의 이름만 모은다. 프로젝트(VS·Unity·Node 등)면 안으로 들어가지 않는다
+    const kids = [];
+    for await (const [name, h] of dir.entries()) kids.push([name, h]);
+    const names = kids.map(([n]) => n.toLowerCase());
+    if (depth > 0 && (names.some((n) => PROJECT.test(n)) || (names.includes("assets") && names.includes("projectsettings")))) {
+      out.push(prefix + "[프로젝트]"); return;
+    }
+    for (const [name, h] of kids) {
+      if (out.length >= MAX_ENTRIES) return;
+      if (name.startsWith(".") || JUNK.has(name.toLowerCase())) continue;
+      if (h.kind === "file") out.push(prefix + name);
+      else if (depth < MAX_DEPTH) await walkNames(h, prefix + name + "/", out, depth + 1);
+    }
+  }
+  async function sendFolder(paths) {
+    const st = $("#folder-status");
+    if (!paths.length) return toast("읽을 파일 이름이 없어요.");
+    st.textContent = `이름 ${paths.length}개 읽음 → 과목·동아리·키워드 고르는 중…`;
+    const r = await api("/api/signals/folder", { method: "POST", json: { paths } });
+    G.dirty = true;
+    const chip = (arr) => arr.map((x) => `<span class="tag">${esc(x.name)}</span>`).join(" ") || '<span class="muted">없음</span>';
+    st.innerHTML = `이름 ${r.received}개 중 ${r.kept}개 사용${r.cached ? " · 이전 결과 재사용(토큰 0)" : r.by === "rule" ? " · 규칙으로 선별(토큰 0)" : ""}<br>
+      과목 ${chip(r.selected.courses)}<br>동아리·소학회 ${chip(r.selected.clubs)}<br>키워드 ${chip(r.selected.keywords)}`;
+    toast(`${r.added}개 항목을 관심 그래프에 반영했어요.`);
+    loadSigSummary();
+  }
+  $("#folder-pick").addEventListener("click", async () => {
+    if (!window.showDirectoryPicker) return $("#folder-input").click();  // 모바일·Safari 등은 기본 폴더 선택으로
+    let dir;
+    try { dir = await window.showDirectoryPicker({ mode: "read" }); } catch (e) { return; }
+    $("#folder-status").textContent = "파일 이름을 읽는 중…";
+    const out = [];
+    await walkNames(dir, dir.name + "/", out, 0);
+    sendFolder(out).catch((e) => toast("폴더 연동 실패: " + e.message));
+  });
   $("#folder-input").addEventListener("change", (e) => {
-    const paths = [...e.target.files].map((f) => f.webkitRelativePath || f.name).filter((p) => !/(^|\/)\./.test(p) && !/node_modules|__pycache__/.test(p));
-    sendSignals("folder", paths.slice(0, 5000), $("#folder-status"));
+    // 기본 폴더 선택은 브라우저가 하위 목록을 다 만들어 주므로 여기서 잡동사니·프로젝트 내부를 걸러 낸다
+    const skip = (p) => p.split("/").some((s) => s.startsWith(".") || JUNK.has(s.toLowerCase()));
+    const paths = [...e.target.files].map((f) => f.webkitRelativePath || f.name).filter((p) => !skip(p));
+    sendFolder(paths.slice(0, MAX_ENTRIES)).catch((err) => toast("폴더 연동 실패: " + err.message));
   });
   $("#history-file").addEventListener("change", async (e) => {
     const f = e.target.files[0]; if (!f) return;
@@ -451,7 +494,7 @@
   });
   async function loadSigSummary() {
     const s = await api("/api/signals/summary");
-    const name = { history: "방문 기록", folder: "학습 폴더 파일", keyword: "키워드", click: "공지 열람", bookmark: "저장" };
+    const name = { history: "방문 기록", folder: "학습 폴더 파일(예전 방식)", course: "학습 폴더 과목", club: "학습 폴더 동아리·소학회", fkeyword: "학습 폴더 키워드", keyword: "키워드", click: "공지 열람", bookmark: "저장" };
     $("#sig-summary").innerHTML = Object.keys(s).length ? Object.entries(s).map(([k, v]) => `${name[k] || k}: <b>${v}</b>`).join("<br>") : "아직 연동된 데이터가 없어요.";
   }
   loaders.connect = loadSigSummary;

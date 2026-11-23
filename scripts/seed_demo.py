@@ -11,7 +11,8 @@ from app.crawler.base import get_parser
 from app.crawler.runner import load_sources, save_items
 from app.db import init_db
 from app.grouping import assign_groups
-from app.interest import add_signals
+from app.folders import select
+from app.interest import add_signals, set_folder_selection
 
 FIX = Path(__file__).resolve().parent.parent / "tests" / "fixtures"
 DEMO_USER = "demo-user-0001"
@@ -39,6 +40,17 @@ DEMO_SIGNALS = {
         "프로젝트/캡스톤디자인/중간발표_자료.pptx",
         "프로젝트/캡스톤디자인/AI_추천시스템_설계.docx",
         "창업동아리/IR_피칭덱_v2.pptx",
+        "창업동아리/데모데이_발표_리허설.pptx",
+        "AI소학회_ALPS/추천시스템_논문리뷰.pdf",
+        "AI소학회_ALPS/LLM_파인튜닝_실습.ipynb",
+        "3학년2학기/운영체제/과제4_페이지교체.pdf",
+        "3학년2학기/인공지능/강화학습_정리.pdf",
+        "게임프로젝트/MyGame/ProjectSettings/ProjectVersion.txt",
+        "게임프로젝트/MyGame/Assets/Scripts/PlayerController.cs",
+        "게임프로젝트/MyGame/Library/ArtifactDB",
+        "C++과제/Homework3/Homework3.sln",
+        "C++과제/Homework3/x64/Debug/Homework3.exe",
+        "사진/김철수_졸업사진.jpg",
         "취업준비/현장실습_자기소개서.hwp",
     ],
     "history": [
@@ -73,7 +85,10 @@ def main():
     print("grouping:", assign_groups())
     print("tagging:", tagger.tag_pending(use_llm=True))
     for kind, items in DEMO_SIGNALS.items():
-        add_signals(DEMO_USER, kind, items)
+        if kind == "folder":  # 실제 앱과 같은 경로: 이름 목록 → 과목·동아리·키워드 선별
+            set_folder_selection(DEMO_USER, select(items))
+        else:
+            add_signals(DEMO_USER, kind, items)
     print(f"demo user '{DEMO_USER}' seeded")
 
 
