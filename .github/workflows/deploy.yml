@@ -1,0 +1,42 @@
+# main에 push되면 테스트를 돌리고, 통과하면 Render Deploy Hook을 호출해 배포한다.
+# PR에서는 테스트만 돌린다. 필요한 설정: 저장소 Secrets에 RENDER_DEPLOY_HOOK_URL.
+# LLM 키(BAZE_API_KEY 등)는 여기가 아니라 Render 대시보드의 Environment에 넣는다.
+name: Test & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Render Deploy Hook 호출
+        env:
+          HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$HOOK" ]; then
+            echo "::error::RENDER_DEPLOY_HOOK_URL 시크릿이 없습니다. Render 서비스 Settings > Deploy Hook URL을 저장소 Secrets에 추가하세요."
+            exit 1
+          fi
+          curl -fsS -X POST "$HOOK" -o /dev/null -w "Render 응답: %{http_code}\n"
