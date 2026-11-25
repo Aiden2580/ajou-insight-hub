@@ -4,6 +4,9 @@ services:
     name: ajou-insight-hub
     runtime: docker
     plan: starter
+    # 배포는 GitHub Actions(.github/workflows/deploy.yml)가 테스트 통과 후 Deploy Hook으로 트리거한다.
+    autoDeploy: false
+    healthCheckPath: /api/status
     envVars:
       - key: BAZE_API_KEY
         sync: false

@@ -34,7 +34,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 주기적 자동 수집은 `AUTO_CRAWL=1`(`CRAWL_INTERVAL_MIN`분마다), 매일 정해진 시각 인사이트 일괄 생성은 `AUTO_INSIGHT=1`(`INSIGHT_HOUR_KST`시)로 켤 수 있습니다. 그래프 화면의 **데모 프로필로 체험** 버튼으로 시드 데이터를 바로 볼 수 있습니다.
 
 Docker: `docker build -t ajou-hub . && docker run -p 8000:8000 -v $PWD/data:/data --env-file .env ajou-hub`
-Render.com: 저장소 연결 후 `render.yaml` Blueprint 사용.
+Render.com: 저장소 연결 후 `render.yaml` Blueprint 사용. 아래 자동 배포 참고.
+
+### GitHub Actions로 Render 자동 배포
+
+`main`에 push하면 `.github/workflows/deploy.yml`이 테스트를 돌리고, 통과하면 Render Deploy Hook을 호출해 배포합니다. PR에서는 테스트만 돌립니다.
+
+1. Render 대시보드 **New > Blueprint** 에서 이 저장소를 선택하면 `render.yaml`대로 서비스가 만들어집니다.
+2. 생성 화면(또는 서비스 **Environment**)에서 `BAZE_API_KEY`에 아주LLM API Gateway 키를 넣습니다. `ANTHROPIC_API_KEY`는 비워 둬도 됩니다.
+3. 서비스 **Settings > Deploy Hook** 의 URL을 복사해 GitHub 저장소 **Settings > Secrets and variables > Actions** 에 `RENDER_DEPLOY_HOOK_URL` 이름으로 추가합니다.
+4. 이후 `main`에 push하거나 Actions 탭에서 **Test & Deploy** 를 수동 실행하면 배포됩니다.
+
+`render.yaml`은 `autoDeploy: false`라서 Render가 직접 중복 배포하지 않고, 테스트를 통과한 커밋만 배포됩니다. LLM 키는 GitHub에 두지 않고 Render에만 둡니다.
 
 ## LLM 연결 (아주LLM BAZE / Anthropic)
 
